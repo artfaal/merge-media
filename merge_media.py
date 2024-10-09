@@ -7,7 +7,6 @@ import glob
 import subprocess
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 
 # Настройка логирования
@@ -148,15 +147,25 @@ def main():
         print(f"Ошибка: Исходная директория '{source_dir}' не найдена.")
         sys.exit(1)
 
-    # Поиск всех видеофайлов
-    video_files = []
+    # Поиск всех видеофайлов и извлечение номеров эпизодов
+    video_files_with_episodes = []
     for filename in os.listdir(source_dir):
         if filename.endswith('.mkv'):
-            video_files.append(os.path.join(source_dir, filename))
+            episode_number = extract_episode_number(filename)
+            if episode_number:
+                video_files_with_episodes.append((int(episode_number), os.path.join(source_dir, filename)))
+            else:
+                print(f"Предупреждение: Не удалось определить номер эпизода для файла '{filename}'.")
 
-    if not video_files:
+    if not video_files_with_episodes:
         print("Не найдено видеофайлов для обработки.")
         sys.exit(1)
+
+    # Сортируем видеофайлы по номеру эпизода
+    video_files_with_episodes.sort(key=lambda x: x[0])
+
+    # Извлекаем отсортированный список путей к видеофайлам
+    video_files = [file_path for _, file_path in video_files_with_episodes]
 
     if args.check:
         print("Режим проверки активирован. Будет выведена информация о файлах для обработки.")
@@ -165,8 +174,8 @@ def main():
         sys.exit(0)
 
     # Обработка видеофайлов с прогресс-баром
-    with ThreadPoolExecutor(max_workers=args.threads) as executor:
-        list(tqdm(executor.map(lambda vf: process_video(vf, source_dir, dest_dir), video_files), total=len(video_files), desc="Обработка файлов"))
+    for video_file in tqdm(video_files, desc="Обработка файлов"):
+        process_video(video_file, source_dir, dest_dir)
 
     print("Обработка завершена.")
 
