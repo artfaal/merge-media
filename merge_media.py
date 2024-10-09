@@ -14,80 +14,62 @@ from tqdm import tqdm
 logging.basicConfig(filename='merge_media.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-def find_files_with_pattern(directory, pattern):
-    """Ищет файлы в директории с учетом специальных символов"""
-    files = []
-    for root, dirs, filenames in os.walk(directory):
-        for filename in filenames:
-            if re.match(pattern, filename):
-                files.append(os.path.join(root, filename))
-    return files
+def extract_episode_number(filename):
+    """Извлекает номер эпизода из имени файла"""
+    match = re.search(r'(\d+)', filename)
+    if match:
+        return match.group(1).lstrip('0')  # Убираем ведущие нули
+    return None
 
-def process_video(video_path, source_dir, dest_dir, audio_groups=None, subtitle_groups=None, check_only=False):
+def process_video(video_path, source_dir, dest_dir, check_only=False):
     video_filename = os.path.basename(video_path)
     base_name, video_ext = os.path.splitext(video_filename)
-    base_name_escaped = re.escape(base_name)
+    episode_number = extract_episode_number(video_filename)
 
     print(f"\nВидео: {video_filename}")
     print(f"Базовое имя файла: {base_name}")
+    print(f"Номер эпизода: {episode_number}")
 
     logging.info(f"Обработка файла: {video_filename}")
+
+    # Проверяем, что номер эпизода удалось извлечь
+    if not episode_number:
+        print(f"Предупреждение: Не удалось определить номер эпизода для видео '{video_filename}'.")
+        return
 
     # Инициализируем списки для аудио и субтитров
     audio_files = []
     subtitle_files = []
 
-    # Поиск аудиодорожек
-    audio_groups_dirs = []
-    if audio_groups:
-        # Проверяем, что указанные группы существуют
-        for group in audio_groups:
-            group_dir = os.path.join(source_dir, "RUS Sound", group)
-            if os.path.isdir(group_dir):
-                audio_groups_dirs.append((group_dir, group))
-            else:
-                print(f"Предупреждение: Группа аудио '{group}' не найдена.")
-    else:
-        # Используем все группы
-        group_dirs = glob.glob(os.path.join(source_dir, "RUS Sound", "*"))
-        audio_groups_dirs = [(group_dir, os.path.basename(group_dir)) for group_dir in group_dirs if os.path.isdir(group_dir)]
+    # Поиск всех аудиодорожек в Rus Sound и его поддиректориях
+    audio_root_dir = os.path.join(source_dir, 'Rus Sound')
+    for root, dirs, files in os.walk(audio_root_dir):
+        group_name = os.path.basename(root)
+        for filename in files:
+            if filename.lower().endswith('.mka'):
+                audio_episode_number = extract_episode_number(filename)
+                if audio_episode_number == episode_number:
+                    audio_file_path = os.path.join(root, filename)
+                    print(f" - Найдена аудиодорожка: {audio_file_path}")
+                    audio_files.append((audio_file_path, group_name))
 
-    for group_dir, group_name in audio_groups_dirs:
-        pattern = f"^{base_name_escaped}.*\\.mka$"
-        print(f"Ищем аудио в группе '{group_name}' по шаблону: {pattern}")
-        group_audio_files = []
-        for filename in os.listdir(group_dir):
-            if re.match(pattern, filename):
-                group_audio_files.append(os.path.join(group_dir, filename))
-        for audio_file in group_audio_files:
-            print(f" - Найдена аудиодорожка: {audio_file}")
-            audio_files.append((audio_file, group_name))
-
-    # Поиск субтитров
-    subtitle_groups_dirs = []
-    if subtitle_groups:
-        # Проверяем, что указанные группы существуют
-        for group in subtitle_groups:
-            group_dir = os.path.join(source_dir, "RUS Subs", group)
-            if os.path.isdir(group_dir):
-                subtitle_groups_dirs.append((group_dir, group))
-            else:
-                print(f"Предупреждение: Группа субтитров '{group}' не найдена.")
-    else:
-        # Используем все группы
-        group_dirs = glob.glob(os.path.join(source_dir, "RUS Subs", "*"))
-        subtitle_groups_dirs = [(group_dir, os.path.basename(group_dir)) for group_dir in group_dirs if os.path.isdir(group_dir)]
-
-    for group_dir, group_name in subtitle_groups_dirs:
-        pattern = f"^{base_name_escaped}.*\\.ass$"
-        print(f"Ищем субтитры в группе '{group_name}' по шаблону: {pattern}")
-        group_subtitle_files = []
-        for filename in os.listdir(group_dir):
-            if re.match(pattern, filename):
-                group_subtitle_files.append(os.path.join(group_dir, filename))
-        for subtitle_file in group_subtitle_files:
-            print(f" - Найдены субтитры: {subtitle_file}")
-            subtitle_files.append((subtitle_file, group_name))
+    # Поиск всех субтитров в Rus Subs и его поддиректориях
+    subs_root_dirs = [
+        os.path.join(source_dir, 'Rus Subs'),
+        os.path.join(source_dir, 'Rus Sound', 'надписи')  # Добавляем директорию с надписями
+    ]
+    for subs_root_dir in subs_root_dirs:
+        if not os.path.exists(subs_root_dir):
+            continue
+        for root, dirs, files in os.walk(subs_root_dir):
+            group_name = os.path.basename(root)
+            for filename in files:
+                if filename.lower().endswith('.ass'):
+                    subtitle_episode_number = extract_episode_number(filename)
+                    if subtitle_episode_number == episode_number:
+                        subtitle_file_path = os.path.join(root, filename)
+                        print(f" - Найдены субтитры: {subtitle_file_path}")
+                        subtitle_files.append((subtitle_file_path, group_name))
 
     if check_only:
         print(f"  Аудиодорожки:")
@@ -155,8 +137,6 @@ def main():
     parser.add_argument('-s', '--source', help='Исходная директория', default='.')
     parser.add_argument('-d', '--dest', help='Выходная директория', default=None)
     parser.add_argument('-c', '--check', help='Режим проверки', action='store_true')
-    parser.add_argument('-a', '--audio-groups', nargs='+', help='Группы аудио для включения', default=None)
-    parser.add_argument('-sub', '--subtitle-groups', nargs='+', help='Группы субтитров для включения', default=None)
     parser.add_argument('-t', '--threads', type=int, help='Количество потоков для параллельной обработки', default=1)
     args = parser.parse_args()
 
@@ -181,12 +161,12 @@ def main():
     if args.check:
         print("Режим проверки активирован. Будет выведена информация о файлах для обработки.")
         for video_file in video_files:
-            process_video(video_file, source_dir, dest_dir, args.audio_groups, args.subtitle_groups, check_only=True)
+            process_video(video_file, source_dir, dest_dir, check_only=True)
         sys.exit(0)
 
     # Обработка видеофайлов с прогресс-баром
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
-        list(tqdm(executor.map(lambda vf: process_video(vf, source_dir, dest_dir, args.audio_groups, args.subtitle_groups), video_files), total=len(video_files), desc="Обработка файлов"))
+        list(tqdm(executor.map(lambda vf: process_video(vf, source_dir, dest_dir), video_files), total=len(video_files), desc="Обработка файлов"))
 
     print("Обработка завершена.")
 
