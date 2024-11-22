@@ -15,7 +15,7 @@ logging.basicConfig(filename='merge_media.log', level=logging.INFO,
 
 def extract_episode_number(filename):
     """Извлекает номер эпизода из имени файла"""
-    match = re.search(r'(\d+)', filename)
+    match = re.search(r'-\s*(\d+)', filename)
     if match:
         return match.group(1).lstrip('0')  # Убираем ведущие нули
     return None
@@ -41,7 +41,7 @@ def process_video(video_path, source_dir, dest_dir, check_only=False):
     subtitle_files = []
 
     # Поиск всех аудиодорожек в Rus Sound и его поддиректориях
-    audio_root_dir = os.path.join(source_dir, 'Rus Sound')
+    audio_root_dir = os.path.join(source_dir, 'RUS Sound')
     for root, dirs, files in os.walk(audio_root_dir):
         group_name = os.path.basename(root)
         for filename in files:
@@ -54,8 +54,9 @@ def process_video(video_path, source_dir, dest_dir, check_only=False):
 
     # Поиск всех субтитров в Rus Subs и его поддиректориях
     subs_root_dirs = [
-        os.path.join(source_dir, 'Rus Subs'),
-        os.path.join(source_dir, 'Rus Sound', 'надписи')  # Добавляем директорию с надписями
+        os.path.join(source_dir, 'RUS Subs'),
+        os.path.join(source_dir, 'RUS Subs', 'надписи'),  # Добавляем директорию с надписями
+        os.path.join(source_dir, 'RUS Sound', 'надписи')  # Добавляем директорию с надписями
     ]
     for subs_root_dir in subs_root_dirs:
         if not os.path.exists(subs_root_dir):
@@ -136,7 +137,6 @@ def main():
     parser.add_argument('-s', '--source', help='Исходная директория', default='.')
     parser.add_argument('-d', '--dest', help='Выходная директория', default=None)
     parser.add_argument('-c', '--check', help='Режим проверки', action='store_true')
-    parser.add_argument('-t', '--threads', type=int, help='Количество потоков для параллельной обработки', default=1)
     args = parser.parse_args()
 
     source_dir = args.source
